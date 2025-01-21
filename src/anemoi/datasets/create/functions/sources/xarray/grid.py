@@ -48,9 +48,9 @@ class MeshedGrid(LatLonGrid):
     @cached_property
     def grid_points(self):
 
-        lat, lon = np.meshgrid(
-            self.lat.variable.values,
+        lon, lat = np.meshgrid(
             self.lon.variable.values,
+            self.lat.variable.values,
         )
 
         return lat.flatten(), lon.flatten()
