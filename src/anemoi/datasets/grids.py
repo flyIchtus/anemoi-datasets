@@ -128,7 +128,7 @@ class Triangle3D:
         return False
 
 
-def cropping_mask(lats, lons, north, west, south, east):
+def cropping_mask(lats, lons, north, west, south, east, additional_mask=None):
     mask = (
         (lats >= south)
         & (lats <= north)
@@ -138,6 +138,8 @@ def cropping_mask(lats, lons, north, west, south, east):
             | ((lons >= west - 360) & (lons <= east - 360))
         )
     )
+    if additional_mask is not None:
+        mask = mask & additional_mask
     return mask
 
 
