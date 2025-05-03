@@ -14,6 +14,7 @@ from typing import Dict
 from typing import Generator
 from typing import List
 from typing import Optional
+from typing import Tuple
 from typing import Union
 
 from anemoi.utils.humanize import did_you_mean
@@ -65,7 +66,6 @@ def _date_to_datetime(
     if isinstance(d, (list, tuple)):
         return [_date_to_datetime(x) for x in d]
     return datetime.datetime.fromisoformat(d)
-
 
 def expand_to_by(x: Union[str, int, list]) -> Union[str, int, list]:
     """Expands a range expression to a list of values.
@@ -462,6 +462,92 @@ def mars(
                 raise
     return ds
 
+def load_for_accumulation(
+    context: Any,
+    dates: List[datetime.datetime],
+    *requests: Dict[str, Any],
+    **kwargs: Any,
+    ) -> Any:
+    """Use appropriate syntax to load mars source data for accumulation
+
+    Args:
+        context (Any): Context of the 'accumulation' source
+        dates (List[datetime.datetime]): List of dates, one accumulation per date
+        *requests (Dict[str,Any]): requests (in mars format) forwarded to mars resource
+
+    Returns:
+        Any: a mars datasource with all dates and times necessary for accumulation
+    """
+    request_already_using_valid_datetime = kwargs.get("request_already_using_valid_datetime", False)
+    use_cdsapi_dataset = kwargs.get("use_cds_api_dataset", None)
+    
+    return mars(
+        context,
+        dates,
+        *requests,
+        request_already_using_valid_datetime,
+        use_cdsapi_dataset
+    )
+    
+def _scda(request: Dict[str, Any]) -> Dict[str, Any]:
+    """Modifies the request stream based on the time.
+    Used in the context of accumulations
+
+    Parameters
+    ----------
+    request : Dict[str, Any]
+        Request parameters.
+
+    Returns
+    -------
+    Dict[str, Any]
+        The modified request parameters.
+    """
+    if request["time"] in (6, 18, 600, 1800):
+        request["stream"] = "scda"
+    else:
+        request["stream"] = "oper"
+    return request
+
+def format_date_for_source(
+    base_date: datetime.datetime,
+    steps: Tuple[int,...]
+    ) -> Tuple[int,int,Tuple[int,...]]:
+            
+    return  (
+            base_date.year * 10000 + base_date.month * 100 + base_date.day,
+            base_date.hour * 100 + base_date.minute,
+            steps,
+        )
+
+def format_accumulation_kwargs(request: Dict[str]) -> Dict:
+    """_summary_
+
+    Args:
+        request (Dict[str]): _description_
+
+    Returns:
+        Dict: _description_
+    """
+
+    class_ = request.get("class", "od")
+    stream = request.get("stream", "oper")
+
+    KWARGS = {
+        ("od", "oper"): dict(patch=_scda),
+        ("od", "elda"): dict(base_times=(6, 18)),
+        ("od", "enfo"): dict(base_times=(0, 6, 12, 18)),
+        ("ea", "oper"): dict(data_accumulation_period=1, base_times=(6, 18)),
+        ("ea", "enda"): dict(data_accumulation_period=3, base_times=(6, 18)),
+        ("rr", "oper"): dict(base_times=(0, 3, 6, 9, 12, 15, 18, 21)),
+        ("l5", "oper"): dict(data_accumulation_period=1, base_times=(0,)),
+    }
+
+    kwargs = KWARGS.get((class_, stream), {})
+    
+    kwargs["use_cdsapi_dataset"] = request.get("use_cds_api_dataset", None)
+
+    return kwargs
 
 execute = mars
 
