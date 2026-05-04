@@ -1,12 +1,11 @@
 dates:
-  start: 2021-06-28T00:00:00
-  end: 2021-06-29T23:59:59
+  start: 2023-03-14T02:00:00
+  end: 2023-03-14T02:00:00
 
 input:
-  csv:
-    path: path.to.csv
-    columns: [ pressure, temperature, humidity ]
-    flavour:
-      latitude: lat
-      longitude: lon
-      date: [ date, time ]
+  pipe:
+    - bufr:
+        path: path/to/file.bfr
+
+output:
+  format: tabular
