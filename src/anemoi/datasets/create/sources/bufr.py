@@ -8,19 +8,19 @@
 # nor does it submit to any jurisdiction.
 
 import logging
-import subprocess
-import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-import earthkit.data as ekd
+from earthkit.data.utils.patterns import Pattern
+from earthkit.data import from_source
 import numpy as np
 import pandas
 import yaml
 
 from ..source import Source
 from . import source_registry
+from .grib import _expand
 
 LOG = logging.getLogger(__name__)
 
@@ -88,6 +88,8 @@ class BufrSource(Source):
         super().__init__(context)
 
         self.path = path
+
+        self.path = path
         if not select:
             select = "*"
             LOG.warning("No SELECT clause provided; defaulting to all columns.")
@@ -118,20 +120,36 @@ class BufrSource(Source):
         pandas.dataframe.DataFrame
             The output dataframe.
         """
+
+        
+
+        # do not substitute if not needed
+        if "{" not in self.path:
+            paths = [self.path]
+        else:
+            paths = Pattern(self.path).substitute(date=dates.dates, allow_extra=True)
+
         start = np.datetime_as_string(dates.start_range)
         end = np.datetime_as_string(dates.end_range)
 
-        df = bufr_to_df(
-            start=start,
-            end=end,
-            path_str=self.path,
-            select=self.select,
-            whitelist=self.whitelist,
-            flavour=self.flavour,
-            pivot_columns=self.pivot_columns,
-            pivot_values=self.pivot_values,
-        )
-        LOG.info(f"BUFR source read {len(df)} rows from {self.path}")
+        result_dfs = []
+        for path in _expand(paths):
+            self.context.trace("📁", "PATH", path)
+            df = bufr_to_df(
+                start=start,
+                end=end,
+                path_str=path,
+                select=self.select,
+                whitelist=self.whitelist,
+                flavour=self.flavour,
+                pivot_columns=self.pivot_columns,
+                pivot_values=self.pivot_values,
+            )
+            LOG.info(f"BUFR source read {len(df)} rows from {self.path}")
+            LOG.info(df.head())
+            result_dfs.append(df)
+        df = pandas.concat(result_dfs)
+        LOG.info(f"BUFR source concat {len(df)} rows from {self.path}")
         LOG.info(df.head())
         return df
 
@@ -146,7 +164,7 @@ def bufr_to_df(
     pivot_values: list = [],
 ) -> pandas.DataFrame:
 
-    ds = ekd.from_source('file', path_str)
+    ds = from_source('file', path_str)
 
     date_col = flavour["date_column_name"]
     time_col = flavour["time_column_name"]
