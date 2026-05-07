@@ -8,15 +8,12 @@
 # nor does it submit to any jurisdiction.
 
 import logging
-from datetime import datetime
-from pathlib import Path
 from typing import Any
 
 from earthkit.data.utils.patterns import Pattern
 from earthkit.data import from_source
 import numpy as np
 import pandas
-import yaml
 
 from ..source import Source
 from . import source_registry
@@ -36,7 +33,6 @@ class BufrSource(Source):
         context,
         path: str,
         select: str | None = None,
-        whitelist: dict | None = None,
         flavour: dict = {},
         pivot_columns: list = [],
         pivot_values: list = [],
@@ -52,8 +48,6 @@ class BufrSource(Source):
             The path to the BUFR file.
         select : str, optional
             The select clause. Defaults to all columns ("*").
-        whitelist : str, optional
-            The whitelist function (equiv to where clause). Defaults to no additional filtering ("").
         flavour : dict, optional
             Naming of the latitude, longitude, date and time columns. Defaults to
             {"latitude_column_name": "lat",
@@ -93,10 +87,7 @@ class BufrSource(Source):
         if not select:
             select = "*"
             LOG.warning("No SELECT clause provided; defaulting to all columns.")
-        if not whitelist:
-            LOG.warning("No whitelist provided; defaulting to no additional filtering.")
         self.select = select
-        self.whitelist = whitelist
         self.flavour = {
             "latitude_column_name": "lat@hdr",
             "longitude_column_name": "lon@hdr",
@@ -136,11 +127,8 @@ class BufrSource(Source):
         for path in _expand(paths):
             self.context.trace("📁", "PATH", path)
             df = bufr_to_df(
-                start=start,
-                end=end,
                 path_str=path,
                 select=self.select,
-                whitelist=self.whitelist,
                 flavour=self.flavour,
                 pivot_columns=self.pivot_columns,
                 pivot_values=self.pivot_values,
@@ -154,11 +142,8 @@ class BufrSource(Source):
         return df
 
 def bufr_to_df(
-    start: np.datetime64,
-    end: np.datetime64,
     path_str: str,
     select: list,
-    whitelist: dict,
     flavour: dict,
     pivot_columns: list = [],
     pivot_values: list = [],
@@ -171,13 +156,7 @@ def bufr_to_df(
     lat_col = flavour["latitude_column_name"]
     lon_col = flavour["longitude_column_name"]
     
-    if whitelist is not None:
-        whitedict = get_whitelist_filter(whitelist, start, end)
-        wl_keys = list(whitedict.keys())
-    else:
-        wl_keys = []
-        whitedict = dict()
-    select = [date_col,time_col,lat_col,lon_col] + select + wl_keys
+    select = [date_col,time_col,lat_col,lon_col] + select
 
     df = ds.to_pandas(
     columns=tuple(select)
@@ -204,12 +183,6 @@ def bufr_to_df(
             inplace=True,
         )
 
-    # filter data from whitelist
-    
-    for key, val in whitedict.items():
-        df = df.loc[df[key].isin(val)]
-    df = df.drop(columns=wl_keys)
-
     # Make sure first 3 columns are time, latitude, longitude
     cols = df.columns.tolist()
     cols.remove("date")
@@ -218,58 +191,3 @@ def bufr_to_df(
     df = df[["date", "latitude", "longitude"] + cols]
 
     return df
-
-def get_whitelist_filter(whitelist: dict, start: np.datetime64, end: np.datetime64) -> tuple[list, list]:
-    """Create the keys and values to filter dataframe from config 
-    Special case is whitelist is taken from file : refine whitelist with date-dependent filter
-    """
-
-    filter_format = whitelist.get('format', 'from_lists')
-
-    match filter_format:
-        case 'from_lists':
-            whitedict = whitelist.get('lists', None)
-
-            assert whitedict is not None, ("Whitelist format is from_lists"
-                                      "(default), got no information")
-        case 'from_file':
-            filename = whitelist.get('path')
-            with open(filename,'r') as f:
-                whitelist_data = yaml.safe_load(f)
-
-            start_dt, end_dt = iso8601_to_datetime(start), iso8601_to_datetime(end)
-            periods = whitelist_data.keys()
-            found_period = False
-            for period in periods:
-                period_start, period_end = period.split('/')
-                period_start, period_end = iso8601_to_datetime(period_start), iso8601_to_datetime(period_end)
-                if start_dt >= period_start and end_dt <= period_end:
-                    whitedict = whitelist_data.get(period,None)
-
-                    assert whitedict is not None, ("Whitelist format is from_file,"
-                                      f"but got no dict for {period}")
-                    found_period = True
-                    break
-            if not found_period:
-                raise ValueError(f"No period found for whitelist {filename}, start {start}, end {end}")
-        
-        case _:
-            raise ValueError("Unknown whitelist format")
-        
-    return whitedict
-
-def iso8601_to_datetime(iso8601_str: str) -> str:
-    """Convert ISO8601 datetime string to YYYYMMDDHHMMSS string.
-
-    Parameters
-    ----------
-    iso8601_str : str
-        ISO8601 datetime string.
-
-    Returns
-    -------
-    str
-        Datetime string in YYYYMMDDHHMMSS format.
-    """
-    dt = datetime.fromisoformat(iso8601_str)
-    return dt
