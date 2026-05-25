@@ -37,9 +37,12 @@ classifiers = [
   "Programming Language :: Python :: Implementation :: CPython",
   "Programming Language :: Python :: Implementation :: PyPy",
 ]
-dynamic = [
-  "version",
-]
+#dynamic = [
+#  "version",
+#]
+
+version = ["0.5.34"]
+
 dependencies = [
   "anemoi-transform>=0.1.27",
   "anemoi-utils[s3]>=0.5",
