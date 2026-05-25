@@ -41,7 +41,7 @@ classifiers = [
 #  "version",
 #]
 
-version = ["0.5.34"]
+version = 0.5.34
 
 dependencies = [
   "anemoi-transform>=0.1.27",
