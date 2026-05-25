@@ -14,7 +14,7 @@ requires = [
 
 [project]
 name = "anemoi-datasets"
-version = 0.5.34
+version = "0.5.34"
 description = "A package to hold various functions to support training of ML models on ECMWF data."
 keywords = [
   "ai",
