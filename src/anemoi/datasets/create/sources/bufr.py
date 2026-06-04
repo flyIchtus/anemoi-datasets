@@ -9,9 +9,11 @@
 
 import logging
 from typing import Any
+import os
 
 from earthkit.data.utils.patterns import Pattern
 from earthkit.data import from_source
+from multiprocessing.pool import ThreadPool
 import numpy as np
 import pandas
 
@@ -112,33 +114,39 @@ class BufrSource(Source):
             The output dataframe.
         """
 
-        
-
+    
         # do not substitute if not needed
         if "{" not in self.path:
             paths = [self.path]
         else:
             paths = Pattern(self.path).substitute(date=dates.dates, allow_extra=True)
 
-        start = np.datetime_as_string(dates.start_range)
-        end = np.datetime_as_string(dates.end_range)
-
         result_dfs = []
-        for path in _expand(paths):
-            self.context.trace("📁", "PATH", path)
-            df = bufr_to_df(
-                path_str=path,
-                select=self.select,
-                flavour=self.flavour,
-                pivot_columns=self.pivot_columns,
-                pivot_values=self.pivot_values,
-            )
-            LOG.info(f"BUFR source read {len(df)} rows from {self.path}")
-            LOG.info(df.head())
-            result_dfs.append(df)
+
+        # reading large bufr with pdbufr is very slow so we rely on a threadpool to get past the I/O throttle
+        max_num_cores = len(os.sched_getaffinity(0))
+        num_proc = min(max_num_cores, len(paths))
+        if num_proc==1:
+            for path in _expand(paths):
+                result_dfs.append(self._load_bufr(path))
+        else:
+            LOG.info(f"Launching BUFR loading threadpool with {num_proc} cores")
+            with ThreadPool(num_proc) as p:
+                result_dfs = p.map(self._load_bufr,_expand(paths))
         df = pandas.concat(result_dfs)
         LOG.info(f"BUFR source concat {len(df)} rows from {self.path}")
-        LOG.info(df.head())
+        return df
+    
+    def _load_bufr(self, path: str):
+        self.context.trace("📁", "PATH", path)
+        df = bufr_to_df(
+            path_str=path,
+            select=self.select,
+            flavour=self.flavour,
+            pivot_columns=self.pivot_columns,
+            pivot_values=self.pivot_values,
+        )
+        LOG.info(f"BUFR source read {len(df)} rows from {self.path}")
         return df
 
 def bufr_to_df(
