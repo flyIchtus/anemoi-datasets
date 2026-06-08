@@ -146,7 +146,7 @@ class BufrSource(Source):
             pivot_columns=self.pivot_columns,
             pivot_values=self.pivot_values,
         )
-        LOG.info(f"BUFR source read {len(df)} rows from {self.path}")
+        LOG.info(f"BUFR source read {len(df)} rows from {path}")
         return df
 
 def bufr_to_df(
