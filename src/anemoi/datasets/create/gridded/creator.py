@@ -61,6 +61,8 @@ class GriddedCreator(Creator):
         dates = self._metadata_dates()
         frequency = self.groups.provider.frequency
         missing = self.groups.provider.missing
+        flagged = self.groups.provider.flagged
+        raw_flagged = {k : [_.isoformat() for _ in v] for k,v in flagged}
 
         variables = self.minimal_input.variables
         LOG.info(f"Found {len(variables)} variables : {', '.join(variables)}.")
@@ -89,7 +91,7 @@ class GriddedCreator(Creator):
         metadata["end_date"] = end_date.isoformat()
         metadata["frequency"] = frequency
         metadata["missing_dates"] = [_.isoformat() for _ in missing]
-
+        metadata["flagged_dates"] = [_ for _ in raw_flagged if _ in dates]
         # TODO:
         # ``dates`` are the values along the dataset's time axis: valid dates
         # for gridded, base dates for trajectories.  ``statistics_dates``

@@ -33,7 +33,7 @@ There are two ways to flag dates in anemoi-datasets:
    - either when building an anemoi-dataset ; the `flagged` key must be filled with the definition of the dates to be included
    - or as a metadata edit to an existing `.zarr` file, with the :ref:`flag` command.
 
-For the moment, flagged dates are only implemented for regular dates, not trajectories or hindcasts.
+For the moment, flagged dates are only implemented for Gridded layout, regular dates, not trajectories or hindcasts.
 
 Definition of flagged dates:
 
@@ -47,6 +47,7 @@ Or as a range of dates with start/end/frequency:
 
 
 Note that ranges may overlap. Resulting dates from all ranges will be flagged only once.
+Flagged dates will be kept only if they fit in the main configuration start/end/frequency date range.
 
 You can subdivide flagged dates into multiple categories if needed.
 By default, all flagged dates will end up in the `general` category.
