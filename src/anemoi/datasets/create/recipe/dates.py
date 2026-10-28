@@ -120,7 +120,53 @@ class DatesProvider(BaseModel):
     def full_dates_list(self) -> list[datetime.datetime]:
         raise NotImplementedError(f"{self.__class__.__name__} does not implement full_dates_list()")
 
+class FlaggedDates(DatesProvider):
+    """DateProvider for flagged dates"""
 
+    class FlaggedRange(BaseModel):
+        start: NaiveDatetime
+        end: NaiveDatetime
+        frequency: Frequency | None = None
+
+    flagged: dict[str,datetime.datetime | FlaggedRange] | list[datetime.datetime] = Field(...)
+
+    @model_validator(mode='before')
+    def _transform_flagged_to_dict(cls, data: dict) -> dict:
+        """Transforms a direct list of ranges into a dict with a 'general' key."""
+        if "flagged" in data and isinstance(data["flagged"], list):
+            data["flagged"] = {"general": data["flagged"]}
+        return data
+
+
+    @model_validator(mode="after")
+    def _expand_flagged_ranges(self) -> "FlaggedDates":
+        expanded_all = {}
+        for category in self.values:
+            expanded = set()
+            for item in self.values[category]:
+                if isinstance(item, self.FlaggedRange):
+                    current = item.start
+                    step = item.frequency or self.frequency
+                    while current <= item.end:
+                        expanded.add(current)
+                        current += step
+                else:
+                    expanded.add(as_datetime(item))
+            expanded_all[category] = list[sorted(expanded)]
+
+        self.values = expanded_all
+        return self
+
+    @cached_property
+    def full_dates_list(self) -> list[datetime.datetime]:
+        res = []
+        for category in self.values:
+            res += self.values[category]
+        return res
+
+    def category_dates_list(self, category: str) -> list[datetime.datetime]:
+        return self.values[category]
+      
 class StartEndDates(DatesProvider):
 
     class MissingRange(BaseModel):
@@ -132,6 +178,7 @@ class StartEndDates(DatesProvider):
     end: NaiveDatetime
     frequency: Frequency = frequency_to_timedelta("1h")
     missing: list[datetime.datetime | str | MissingRange] = Field(default_factory=list)
+    flagged: FlaggedDates | None = None
 
     @model_validator(mode="after")
     def _expand_missing_ranges(self) -> "StartEndDates":
@@ -339,6 +386,9 @@ def _dates_discriminator(config_or_model: Any) -> str:
     if "values" in config:
         return "values"
 
+    if "flagged" in config:
+        return "flagged"
+
     return "start_end"
 
 
@@ -347,6 +397,7 @@ Dates = Annotated[
         Annotated[StartEndDates, Tag("start_end")],
         Annotated[ValuesDates, Tag("values")],
         Annotated[HindcastsDates, Tag("hindcasts")],
+        Annotated[FlaggedDates,Tag("flagged")]
     ],
     Discriminator(_dates_discriminator),
 ]
