@@ -14,6 +14,7 @@ import uuid
 from typing import Any
 
 from anemoi.datasets.create.dataset import Dataset
+from anemoi.datasets.create.recipe import Dates, Recipe, loader_recipe_from_yaml
 
 from . import Command
 
@@ -57,6 +58,7 @@ class Flag(Command):
         if not os.path.exists(target):
             raise  FileNotFoundError(f"Target dataset '{target}' does not exist.")
 
+        new_recipe = loader_recipe_from_yaml(recipe)
 
         # --- update metadata in place on the source store ---
         dataset = Dataset(target, update=True)
@@ -66,12 +68,31 @@ class Flag(Command):
 
         # Update the name inside the recipe(s).
         for key in ("recipe", "_recipe"):
-            recipe = dataset.get_metadata(key)
-            if recipe is None:
+            old_recipe = dataset.get_metadata(key)
+            if old_recipe is None:
                 continue
-            recipe = self._rename_in_recipe(recipe, new_name)
-            dataset.update_metadata({key: recipe})
+            old_recipe = recipe if isinstance(recipe, dict) else json.loads(recipe)
+            old_recipe = Recipe(**old_recipe)
 
+        # Check that old recipe and new recipe match except for flagged dates
+        for key, value in old_recipe.items():
+            if key!="flagged" and new_recipe[key] != value:
+                raise ValueError(f'Original dataset recipe mismatches current on {key}')
+            if key=="flagged" and new_recipe[key]==value:
+                LOG.warning("Identical flagged dates in dataset and recipe: no-op")
+                return
+            if key=="flagged" and new_recipe[key] is not None:
+                LOG.warning("⚠️ Overwriting previously flagged dates")
+
+        flagged = {k : [_.isoformat() for _ in v] for k,v in new_recipe.dates.flagged}
+        filtered_flagged = {}
+        dates = new_recipe.dates.full_dates_list()
+        for k in flagged:
+            correct_flagged = [v for v in flagged[k] if v in dates]
+            filtered_flagged[k] = correct_flagged
+
+        dataset.update_metadata({"flagged_dates": filtered_flagged})
+        
         # Track the chain of previous UUIDs (for provenance only).
         previous_uuids = dataset.get_metadata("previous_uuids", [])
         if old_uuid is not None:
@@ -79,23 +100,11 @@ class Flag(Command):
 
         dataset.update_metadata(uuid=new_uuid, previous_uuids=previous_uuids)
 
-        LOG.info(f"Renamed '{source}' -> '{target}': uuid {old_uuid} -> {new_uuid}, recipe name -> '{new_name}'")
+        LOG.info(f"Flagged  from  recipe '{recipe}' -> '{target}': uuid {old_uuid} -> {new_uuid}")
 
-        # --- move the store ---
-        # Drop the Dataset reference so no file handles/locks are held during the move.
-        del dataset
-        os.rename(source, target)
-
-        # Best-effort cleanup of the stale source lock file.
-        source_lock = source + ".lock"
-        if os.path.exists(source_lock):
-            try:
-                os.remove(source_lock)
-            except OSError as e:
-                LOG.warning(f"Could not remove stale lock file '{source_lock}': {e}")
 
     @staticmethod
-    def _rename_in_recipe(recipe: Any, new_name: str) -> Any:
+    def _add_flagged_dates_in_recipe(recipe: Any, flagged: Dates) -> Any:
         """Set the top-level ``name`` field of the recipe to *new_name*.
 
         Parameters
@@ -114,8 +123,7 @@ class Flag(Command):
         """
         is_str = isinstance(recipe, str)
         data = json.loads(recipe) if is_str else dict(recipe)
-        if "name" in data:
-            data["name"] = new_name
+        data['flagged'] = flagged
         return json.dumps(data) if is_str else data
 
 

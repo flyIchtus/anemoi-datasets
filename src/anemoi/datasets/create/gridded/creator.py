@@ -91,7 +91,11 @@ class GriddedCreator(Creator):
         metadata["end_date"] = end_date.isoformat()
         metadata["frequency"] = frequency
         metadata["missing_dates"] = [_.isoformat() for _ in missing]
-        metadata["flagged_dates"] = [_ for _ in raw_flagged if _ in dates]
+        filtered_flagged = {}
+        for k in raw_flagged:
+            correct_flagged = [ v for v in raw_flagged[k] if v in dates]
+            filtered_flagged[k] = correct_flagged
+        metadata["flagged_dates"] = filtered_flagged
         # TODO:
         # ``dates`` are the values along the dataset's time axis: valid dates
         # for gridded, base dates for trajectories.  ``statistics_dates``
